@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>eCharts_map</title>
+</head>
+
+<body>
+	<div style="height:740px;width: 100%;background: #FFF;">
+		<div id="map" style="height:740px;width: 1024px;margin: 0 auto;"></div>
+	</div>
+</body>
+<script type="text/javascript" src="js/jquery-3.3.1.min.js"></script>
+<script type="text/javascript" src="js/echarts.min.js"></script>
+<script type="text/javascript" src="js/china.js"></script>
+<script type="text/javascript" src="js/utils.js"></script>
+<script type="text/javascript">
+	let myChart = echarts.init(document.getElementById('map'));
+	let currentData = utils.china;
+	function getOption() {
+		return {
+			tooltip: {
+				trigger: 'item',
+				formatter: function (params) {
+					return params.data.name + ":" + params.data.count;
+				},
+			},
+			title: {
+				show: true,
+				x: "center",
+				y: "top",
+				top: 10,
+				text: "疫苗接种分布散点图",
+				textStyle: {
+					color: "#000",
+					fontSize: 16,
+				}
+			},
+			toolbox: {},
+			geo: [],
+			series: [
+				{
+					// name: '接种数量',
+					type: 'scatter',
+					coordinateSystem: 'geo',
+					symbolSize: 10,
+					data: [],
+				}
+			],
+			visualMap: {
+				type: 'continuous', // 连续型
+				min: 0, // 值域最小值，必须参数
+				max: 200, // 值域最大值，必须参数
+				calculable: true, // 是否启用值域漫游
+				inRange: {
+					color: ['#50a3ba', '#eac736', '#d94e5d']
+					// 指定数值从低到高时的颜色变化
+				},
+				textStyle: {
+					color: '#fff' // 值域控件的文本颜色
+				}
+			},
+		};
+
+	}
+
+	function getGeo(mapName, codes) {
+		return {
+			type: 'map',
+			map: mapName,
+			zoom: 1, //当前视角的缩放比例
+			roam: true, //是否开启平游或缩放
+			scaleLimit: { //滚轮缩放的极限控制
+				min: 1,
+				max: 2
+			},
+			left: 10,
+			right: 5,
+			top: 10,
+			bottom: 10,
+			selectedMode: 'single',
+			label: {
+				// 静态的时候展示样式
+				normal: {
+					// 是否显示地图省份的名称
+					show: true,
+					textStyle: {
+						color: "#000",
+					},
+				},
+				// 动态展示的样式
+				emphasis: {
+					// 设置鼠标放到地图上面的字体颜色
+					color: '#ee032f',
+				},
+			},
+			// label: {
+			// 	normal: {
+			// 		show: false //显示省份标签
+			// 	},
+			// 	emphasis: {
+			// 		//对应的鼠标悬浮效果
+			// 		show: false
+			// 	}
+			// },
+			// 图形样式
+			itemStyle: {
+				normal: {
+					show: true,
+					areaColor: '#e5faff',//地图背景色
+					borderColor: '#ccebff',//地图border颜色
+					borderWidth: '1',
+					shadowColor: '#ccebff',//高亮悬浮颜色
+					shadowBlur: 20
+				},
+				//emphasis 是图形在高亮状态下的样式，比如在鼠标悬浮或者图例联动高亮时。
+				emphasis: {
+					show: true,
+					areaColor: '#0066ff',//鼠标滑过区域颜色
+					borderColor: '#0066ff'//鼠标滑过区域border颜色
+				}
+			},
+			regions: codes
+		}
+
+	}
+
+	// 初始化地图，有code就进行下钻，没有就回到初始化中国地图，code是行政区划代码
+	function initMap(code, name) {
+		myChart.clear();
+		if (code !== "" && code !== undefined) {
+			return linkage(code, name);
+		}
+		if (name === "" || code === undefined) {
+			name = 'china';
+		}
+		renderMap(name, code);
+		// 单击下钻
+		myChart.on('click', function (params) {
+			if (params.componentType === "series") {//说明点的是一个圆圈
+				// let name = params.name;
+				// let code = GetAllRect(null, name).code;
+				// // 联动到该州市，重新进入初始化地图
+				// initMap(code, name);
+			} else if (params.componentType === "geo") {//说明点的是地图
+				let code = params.region.code;
+				let name = params.region.name;
+				if (!code) {
+					for (var i = 0; i < currentData.length; i++) {
+						if (name === currentData[i].name) {
+							code = currentData[i].code;
+							break;
+						}
+					}
+				}
+				// 联动到该州市，重新进入初始化地图
+				initMap(code, name);
+			}
+		});
+	}
+
+	// 地级市联动，下钻
+	function linkage(code, name) {
+		if (code && code.toString().substring(4) !== "00" && code.toString().substring(2, 4) !== "00") {
+			renderMap("china", "000000");
+			return true;
+		}
+		let url = "";
+		if ("0000" === code.toString().substring(2)) {
+			url = "json/100000/" + code + ".geoJson";
+		} else {
+			url = "json/100000/" + code.toString().substring(0, 2) + "0000/" + code + ".geoJson";
+		}
+		$.getJSON(url, function (data) {
+			data.features.forEach(function (element) {
+				currentData.push({
+					name: element.properties.name,
+					code: element.properties.adcode
+				})
+			});
+			echarts.registerMap(name, data);
+			renderMap(name, code);
+		});
+	}
+	/**
+	 * 算数-小圆圈的数量
+	 * @params [string] allCount 总数量
+	 * */
+	function circleCount(allCount) {
+		var circle = "10";//一个点代表几个圆圈 查询条件输入框的值 可以用"window.XX"或者其他方式带进来
+		var count = 0;
+		//四舍五入 -- 最少为1
+		count = Math.round(parseInt(allCount) / parseInt(circle));
+		console.log("count====", count);
+		if (count === 0) count = 1;
+		return count;
+	}
+	let arr = [];
+	// 渲染地图
+	function renderMap(name, code = "000000") {
+		myChart.clear();
+		let option = getOption();
+		option.geo.push(getGeo(name, utils[name]));
+		myChart.setOption(option, true);
+		let resultData = [
+			{ name: "石景山区", code: "110107", value: 120 },
+			{ name: "长安区", code: "130102", value: 120 },
+			{ name: "霍林郭勒市", code: "150581", value: 120 },
+		]
+		//加入随机散点
+		//先setOption生成地图后，再去改data再setOption
+		let url = "js/location.json";
+		$.getJSON(url, function (res) {
+			data = Object.getOwnPropertyNames(res);
+			let renderData = [];//将要渲染的数据
+			resultData.forEach(function (item, index) {
+				let level = null;//判断等级 province省 city市 district区县
+				//按照现在的需求，所有的数据必须为区县级别的数据
+				if (item.code.toString() === "000000") {
+					level = "china";
+					alert("第" + index + "数据错误，不可直接返回国家级别数据");
+					return false;
+				} else if (item.code.toString().substr(2) === "0000") {
+					level = "province";
+					alert("第" + index + "数据错误，不可直接返回省级别数据");
+					return false;
+				} else if (item.code.toString().substr(4) === "00") {
+					level = "city";
+					alert("第" + index + "数据错误，不可直接返回市级别数据");
+					return false;
+				} else {
+					level = "district";
+				}
+				if (level === "district") {
+					let province = item.code.toString().substr(0, 2) + ""//所在省
+					let city = item.code.toString().substr(2, 2);//所在市
+					let district = item.code;//所在区县
+					let count = circleCount(item.value);//圆圈数量
+					for (var i = 0; i < data.length; i++) {
+						//过滤数据-渲染市。区县地图 其他市区的散点还显示在地图之外的问题
+						if (code.toString() === "000000") { //全国
+							if (res[data[i]].level === "district" && district == res[data[i]].adcode) {
+								var obj = GetAllRect(district);
+								var rect = obj.rect;
+								for (var key = 0; key < count; key++) {
+									var coord = [Infinity, Infinity];
+									coord[0] = rect.x + Math.random() * rect.width * 0.8;
+									coord[1] = rect.y + Math.random() * rect.height * 0.8;
+									renderData.push({
+										name: res[data[i]].name,
+										value: coord,
+										count: count
+									})
+								}
+								break;
+							}
+						} else if (code.toString().substr(2) === "0000") { //省
+							if (code.toString().substr(0, 2) == res[data[i]].adcode.toString().substr(0, 2)) {
+								if (res[data[i]].level === "district" && district == res[data[i]].adcode) {
+									var obj = GetAllRect(district);
+									var rect = obj.rect;
+									for (var key = 0; key < count; key++) {
+										var coord = [Infinity, Infinity];
+										coord[0] = rect.x + Math.random() * rect.width * 0.8;
+										coord[1] = rect.y + Math.random() * rect.height * 0.8;
+										renderData.push({
+											name: res[data[i]].name,
+											value: coord,
+											count: count
+										})
+									}
+									break;
+								}
+							}
+						} else if (code.toString().substr(4) === "00") { //市
+							if (code.toString().substr(0, 4) == res[data[i]].adcode.toString().substr(0, 4)) {
+								if (res[data[i]].level === "district" && district == res[data[i]].adcode) {
+									var obj = GetAllRect(district);
+									var rect = obj.rect;
+									for (var key = 0; key < count; key++) {
+										var coord = [Infinity, Infinity];
+										coord[0] = rect.x + Math.random() * rect.width * 0.8;
+										coord[1] = rect.y + Math.random() * rect.height * 0.8;
+										renderData.push({
+											name: res[data[i]].name,
+											value: coord,
+											count: count
+										})
+									}
+									break;
+								}
+							}
+						}
+					}
+				}
+			});
+			option.series[0].data = option.series[0].data.concat(renderData);
+			// debugger
+			myChart.setOption(option, true);
+		});
+	}
+	initMap();
+</script>
+
+<script>
+	// 抓取所有区县rect对象，用于生成随机散点---暂时不用 别删掉
+	// var geo = myChart.getModel().getComponent("geo").coordinateSystem;
+	// 	if (name === "china") {
+	// 		let data = geo.model._targetList;
+	// 		data.forEach((item) => {
+	// 			var region = geo.getRegion(item.name);
+	// 			var rect = region.getBoundingRect();
+	// 			arr.push({
+	// 				name: item.name,
+	// 				code: item.code,
+	// 				rect: rect
+	// 			});
+	// 			initMap(item.code, item.name);
+	// 		})
+	// 	} else {
+	// 		let data = geo.model.coordinateSystem._regionsMap;
+	// 		let arr2 = Object.getOwnPropertyNames(data);
+	// 		debugger
+	// 		arr2.forEach((item2) => {
+	// 			var code = null;
+	// 			var rect = null;
+	// 			for (let key in data) {
+	// 				if (key == item2) {
+	// 					code = data[key].properties.adcode;
+	// 					rect = data[key]._rect;
+	// 				}
+	// 			}
+	// 			arr.push({
+	// 				name: item2,
+	// 				code: code,
+	// 				rect: rect
+	// 			});
+	// 			if (code && code.toString().substr(4, 2) == "00") {
+	// 				initMap(code, item2);
+	// 			}
+	// 		})
+	// 		console.log("arr===", JSON.stringify(arr));
+	// 	}
+</script>
+
+</html>
